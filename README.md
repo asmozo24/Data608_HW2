@@ -1,7 +1,3 @@
-# Data608_HW2
-Mapping Data
-
-
 ---
 title: "Data608_HW2a"
 author: "Alexis Mekueko"
@@ -187,8 +183,6 @@ After a few building collapses, the City of New York is going to begin investiga
 
 ```{python}
 
-
-
 def df_window(df):
     with NamedTemporaryFile(delete=False, suffix='.html') as f:
         df.to_html(f)
@@ -203,7 +197,18 @@ column2 = ny['numfloors'].min() # 0.1
 max_value = column.max() #2019
 min_value = column.min() # 1851
 
+bins = [0, 5, 10, 20,40, 60, 90, 110 ]
 year_fl = ny[["yearbuilt", "numfloors"]]
+year_fl["5yrs"] = (year_fl["yearbuilt"]//5*5).astype(int)
+yrfl = year_fl.groupby(["5yrs", pd.cut(year_fl["numfloors
+], bins)]).count().drop(["numfloors"], axis = 1).reset_index()
+yrsfl1 = yrfl.groupby("numfloors")
+fig = go.Figure()
+for i in yrsfl1.yrsfl1:
+       n1 = yrsfl1.get_n(i)
+    fig.add_trace(go.Bar(x=n["5yrs"], y=n['yearbuilt'], name=str(i)))
+fig.update_layout(barmode='stack', xaxis={'categoryorder':'category ascending'})
+fig.show()
 
 
 
@@ -216,8 +221,6 @@ Datashader is a library from Anaconda that does away with the need for binning d
 As an example, lets continue with our question above and look at a 2D histogram of YearBuilt vs NumFloors:
 ```{python}
 
-
-
 fig = go.FigureWidget(
     data = [
         go.Histogram2d(x=ny['yearbuilt'], y=ny['numfloors'], autobiny=False, ybins={'size': 1}, colorscale='Greens')
@@ -225,6 +228,24 @@ fig = go.FigureWidget(
 )
 
 fig
+
+print("something wrong with the histogram plot.")
+
+yearbins = 200
+floorbins = 200
+
+yearBuiltCut = pd.cut(ny['yearbuilt'], np.linspace(ny['yearbuilt'].min(), ny['yearbuilt'].max(), yearbins))
+numFloorsCut = pd.cut(ny['numfloors'], np.logspace(1, np.log(ny['numfloors'].max()), floorbins))
+
+xlabels = np.floor(np.linspace(ny['yearbuilt'].min(), ny['yearbuilt'].max(), yearbins))
+ylabels = np.floor(np.logspace(1, np.log(ny['numfloors'].max()), floorbins))
+
+data = [
+    go.Heatmap(z = ny.groupby([numFloorsCut, yearBuiltCut])['bbl'].count().unstack().fillna(0).values,
+              colorscale = 'Greens', x = xlabels, y = ylabels)
+]
+
+py.iplot(data)
 
 
 ```
@@ -255,7 +276,7 @@ Datashader really shines when looking at geographic information. Here are the la
 ```{python}
 
 
-NewYorkCity   = (( 913164.0,  1067279.0), (120966.0, 272275.0))
+NewYorkCity   = (( -74.29, -73.69), (40.49, 40.92))
 cvs = ds.Canvas(700, 700, *NewYorkCity)
 agg = cvs.points(ny, 'xcoord', 'ycoord')
 view = tf.shade(agg, cmap = cm(inferno), how='log')
@@ -268,11 +289,40 @@ Interestingly, since we're looking at structures, the large buildings of Manhatt
 
 Unfortunately, Datashader doesn't have the best documentation. Browse through the examples from their github repo. I would focus on the visualization pipeline and the US Census Example for the question below. Feel free to use my samples as templates as well when you work on this problem.
 
-Question
+## Question
 You work for a real estate developer and are researching underbuilt areas of the city. After looking in the Pluto data dictionary, you've discovered that all tax assessments consist of two parts: The assessment of the land and assessment of the structure. You reason that there should be a correlation between these two values: more valuable land will have more valuable structures on them (more valuable in this case refers not just to a mansion vs a bungalow, but an apartment tower vs a single family home). Deviations from the norm could represent underbuilt or overbuilt areas of the city. You also recently read a really cool blog post about bivariate choropleth maps, and think the technique could be used for this problem.
 
 Datashader is really cool, but it's not that great at labeling your visualization. Don't worry about providing a legend, but provide a quick explanation as to which areas of the city are overbuilt, which areas are underbuilt, and which areas are built in a way that's properly correlated with their land value.
 
+```{python}
+
+ny['bldgAssessment'] = ny['AssessTot'] - ny['AssessLand']
+ny[['AssessLand', 'bldgAssessment']].describe()
+
+quantiles = 3
+nq = (np.arange(quantiles) + 1).astype(str).tolist()
+nyfl2['LandValue'] = pd.nqcut(ny['AssessLand'], 
+                                  quantiles, 
+                                  labels=['Land Value ' + i for i in nq])
+
+nyfl2['blg_value'] = pd.nqcut(ny['bldgAssessment'], 
+                                       quantiles, 
+                                       labels=['Structure Value ' + i for i in nq])
+
+nyfl2['combined'] = pd.Categorical(nyfl2['LandValue'].str.cat(nyfl2['blg_value'], sep=', '))
+categories = np.sort(nyfl2['combined'].unique())
+
+color_map = dict(zip(categories,
+                     ['#e8e8e8', '#dd7c8a', '#cc0024', 
+                       '#7bb3d1', '#8d6c8f', '#8a274a',
+                      '#016eae', '#4a4779', '#574249']))
 
 
+NewYorkCity   = (( -74.29,  -73.69), (40.49, 40.92))
+cvs = ds.Canvas(700, 700, *NewYorkCity)
+agg = cvs.points(nymod, 'lon', 'lat', ds.count_cat('combined'))
+view = tf.shade(agg, color_key=color_map )
+export(tf.spread(view, px=1), 'ny_land')
 
+
+```
